@@ -1208,7 +1208,8 @@ MenuListEntries()
         │     └── ReadUEFIVar(L"BootOrder")
         │           └── GetFirmwareEnvironmentVariableW("BootOrder", ...)
         ├── GetExistingBootNums()
-        │     └── [loop 0..FFFF] GetFirmwareEnvironmentVariableW("Boot%04X", ...)
+        │     ├── GetBootOrder() → slot primari (sempre presenti)
+        │     └── [loop 0..0x01FF, max 32 miss consecutive] probe firmware
         └── [per ogni slot] ReadBootEntry(num)
               ├── swprintf_s → L"Boot0001"
               ├── ReadUEFIVar(L"Boot0001")
@@ -1541,6 +1542,268 @@ build.bat
 > Il programma crea sempre un backup automatico prima di ogni modifica.  
 > In caso di problemi: accedi al BIOS/UEFI della tua scheda madre e usa  
 > l'opzione "Boot Override" o "Restore Defaults" per ripristinare manualmente.
+
+---
+
+## 0. Guida rapida: Linux Mint su secondo disco
+
+Questa è la procedura **esatta e sicura** per installare Linux Mint mantenendo Windows intatto, usando BCDToolWindows invece di GRUB come gestore dell'avvio.
+
+### Prima dell'installazione di Linux Mint (in Windows)
+
+1. Crea un backup UEFI con BCDToolWindows:
+   ```
+   Menu 7 → "Crea backup"
+   ```
+   Salva il file `.bcdtool` che viene creato — è il tuo punto di ripristino completo.
+
+2. Annota quale slot Boot# corrisponde a Windows (es. `Boot0001`).
+
+### Installazione di Linux Mint
+
+**Scenario A — Stacchi fisicamente il disco Windows durante l'installazione (consigliato)**
+
+Questo è l'approccio più sicuro. L'installer di Linux non "vede" il disco Windows, quindi non può toccarlo per nessun motivo.
+
+1. Spegni il PC
+2. **Stacca fisicamente il disco con Windows** (cavo SATA o M.2)
+3. Avvia da USB con Linux Mint
+4. Installa normalmente — l'installer vedrà solo il secondo disco
+5. **Alla domanda sul bootloader**: lascia le impostazioni di default
+   - Linux Mint installerà GRUB sulla **propria ESP** (partizione EFI del secondo disco)
+   - Non tocca niente del disco Windows perché il disco Windows non è connesso
+6. Termina l'installazione
+7. Spegni il PC, **riconnetti il disco Windows**
+8. Avvia Windows (il firmware UEFI probabilmente avvierà l'ultimo OS installato — se va su Linux, usa il tasto `F8`/`F12` per scegliere Windows)
+9. Avvia BCDToolWindows come Amministratore → **Menu 6 "Auto-configura tutto"**
+10. Il programma trova sia Windows sia Linux Mint nelle rispettive ESP e aggiunge entrambe le voci nella NVRAM
+11. Riavvia: d'ora in poi il firmware mostra le opzioni (o va su Windows di default)
+
+**Scenario B — Tieni entrambi i dischi connessi durante l'installazione**
+
+Funziona anche così, ma richiede più attenzione nella selezione del disco durante l'installazione.
+
+1. Avvia da USB con Linux Mint
+2. All'installer, scegli **"Installazione personalizzata"** (non automatica)
+3. Assicurati di selezionare il **secondo disco** come destinazione
+4. Nella sezione "Dispositivo per il bootloader" (o simile): **seleziona la partizione EFI del secondo disco** (non quella di Windows)
+   - In Linux Mint: il bootloader si configura automaticamente nella partizione EFI del disco selezionato
+5. Procedi con l'installazione
+6. Al riavvio: avvia Windows, poi BCDToolWindows → **Menu 6**
+
+### Cosa si installa nella ESP di Linux Mint?
+
+Linux Mint usa GRUB come bootloader. Nella sua partizione ESP crea:
+```
+/EFI/linuxmint/grubx64.efi     ← bootloader principale
+/EFI/linuxmint/shimx64.efi     ← shim per Secure Boot (se abilitato)
+```
+
+BCDToolWindows rileva automaticamente entrambi (sono nel database di `os_detector.cpp`) e crea:
+```
+Boot0002: "Linux Mint"  →  HD(1,GPT,{GUID-ESP-Linux},...)\EFI\linuxmint\grubx64.efi
+```
+
+### Cosa succede se stacchi il disco Linux dopo?
+
+```
+Avvio PC
+  ├── Firmware legge BootOrder: [Boot0001=Windows, Boot0002=Linux Mint]
+  ├── Tenta Boot0002: cerca partizione con GUID {GUID-ESP-Linux}
+  │     → Disco non trovato → nessuna partizione con quel GUID
+  │     → Salta automaticamente
+  └── Tenta Boot0001: cerca partizione con GUID {GUID-ESP-Windows}
+        → Trovata sul disco Windows → avvia Windows normalmente
+```
+
+Nessun errore, nessun intervento. Il firmware gestisce l'assenza del disco da solo.
+
+### Cosa succede se poi riattacchi il disco Linux?
+
+Il firmware trova di nuovo la partizione ESP di Linux → Boot0002 funziona di nuovo. Il menu di avvio torna a mostrare entrambe le opzioni. **Nessuna riconfigurazione necessaria.**
+
+---
+
+## 8. Compatibilità OS e sicurezza
+
+### Sistema operativo Windows richiesto
+
+| Versione Windows | Supporto |
+|---|---|
+| Windows 11 (qualsiasi versione) | ✅ Confermato compatibile |
+| Windows 10 (build 1903 e successive) | ✅ Confermato compatibile |
+| Windows 10 (build precedenti) | ✅ Dovrebbe funzionare (stessa API) |
+| Windows 8.1 | ⚠️ Probabilmente funziona (API presente) — non testato |
+| Windows 8 | ⚠️ Probabilmente funziona — non testato |
+| Windows 7 | ❌ Non supportato — `GetFirmwareEnvironmentVariableW` non gestisce UEFI vars |
+| Windows Vista / XP | ❌ Non supportato |
+
+> Le API `GetFirmwareEnvironmentVariableW` / `SetFirmwareEnvironmentVariableW` con supporto completo per UEFI (non solo Legacy) sono garantite da Windows 8 in poi. Su Windows 7, queste funzioni esistono ma operano solo su variabili di tipo diverso.
+
+### Firmware UEFI richiesto
+
+| Tipo firmware | Supporto |
+|---|---|
+| UEFI 2.x (2009+) — schede madre moderne | ✅ Pienamente compatibile |
+| UEFI 1.x (2006-2008) — schede madre vecchie | ⚠️ Probabilmente funziona — non testato |
+| Legacy BIOS (qualsiasi anno) | ❌ Non funziona — rilevato all'avvio |
+| Dual-mode UEFI/BIOS in modalità BIOS | ❌ Verificare nelle impostazioni BIOS che sia in modalità UEFI |
+
+### Disco richiesto
+
+| Tipo tabella partizioni | Supporto |
+|---|---|
+| GPT (GUID Partition Table) | ✅ Richiesto per UEFI boot |
+| MBR (Master Boot Record) | ❌ Non supportato per le operazioni di boot UEFI (il disco MBR viene ignorato) |
+
+> Attenzione: Windows 11 richiede GPT per la partizione di sistema. Se hai Windows 11, sicuramente hai GPT.
+
+### Cosa fa e cosa NON fa questo programma
+
+#### Cosa fa (operazioni sicure)
+
+| Operazione | Effetto |
+|---|---|
+| **Legge** variabili UEFI | Solo lettura dalla NVRAM — nessun danno possibile |
+| **Legge** dischi GPT | Solo lettura (IOCTL read-only) — nessun danno possibile |
+| **Aggiunge** voci Boot | Scrive una nuova variabile UEFI — non tocca i file sui dischi |
+| **Modifica** BootOrder | Cambia l'ordine di priorità — non tocca i file |
+| **Elimina** voci Boot | Rimuove la voce dalla NVRAM — non tocca i file |
+| **Monta** ESP | Assegna una lettera di unità — reversibile |
+| **Crea** backup | Scrive un file `.bcdtool` su disco — nessun effetto sul firmware |
+| **Ripristina** backup | Sovrascrive variabili UEFI con i valori salvati |
+
+#### Cosa NON fa (mai)
+
+- ❌ Non modifica i file su disco (bootmgfw.efi, grubx64.efi, ecc.)
+- ❌ Non modifica il BCD store di Windows (`C:\Boot\BCD`)
+- ❌ Non formatta partizioni
+- ❌ Non scrive sul MBR o sull'inizio dei dischi
+- ❌ Non installa/disinstalla bootloader
+- ❌ Non modifica file di configurazione di Linux (fstab, grub.cfg, ecc.)
+- ❌ Non ha accesso a Internet
+- ❌ Non installa driver
+
+### Analisi dei rischi per operazione
+
+#### Rischio BASSO — lettura e visualizzazione
+
+Funzioni: `ListAllBootEntries`, `MenuListEntries`, `MenuScanDisks`, `GetBootOrder`, `ReadBootEntry`, `EnumerateDisks`
+
+Nessun rischio. Sono operazioni di sola lettura. Non modificano nulla.
+
+#### Rischio BASSO — aggiunta voce
+
+Funzione: `AddBootEntry`, `MenuAddEntry`
+
+Aggiunge una nuova variabile `BootXXXX` e aggiorna `BootOrder`. Il caso peggiore è una voce mal formata che il firmware ignora — Windows continua ad avviarsi normalmente dalla voce precedente.
+
+**Protezione:** backup automatico creato prima della prima modifica della sessione.
+
+#### Rischio MEDIO — rimozione voce
+
+Funzione: `RemoveBootEntry`, `MenuRemoveEntry`
+
+Elimina una variabile `BootXXXX` e aggiorna `BootOrder`. Se elimini per errore la voce di Windows, al prossimo avvio il firmware potrebbe mostrare un menu di selezione manuale (F8/F12) oppure tentare una voce fallback.
+
+**Protezione:** 
+- Conferma richiesta prima di eliminare
+- Backup automatico creato prima della rimozione
+- Il firmware ha sempre una fallback: legge il file `\EFI\BOOT\BOOTx64.EFI` da qualsiasi ESP se non trova voci valide
+
+#### Rischio ALTO — ripristino snapshot
+
+Funzione: `ApplySnapshot`, `MenuBackupRestore → scelta 2`
+
+Elimina **tutte** le voci UEFI correnti e le riscrive dal backup. Se il backup è corrotto o il file `.bcdtool` è stato copiato da un altro PC, si potrebbe finire con voci non valide.
+
+**Protezione:**
+- Prima del ripristino viene creato automaticamente un backup dello stato corrente
+- Il firmware ha sempre il fallback `\EFI\BOOT\BOOTx64.EFI`
+- Il file `.bcdtool` contiene un magic number verificato prima del ripristino
+
+#### Cosa fare se Windows non parte dopo un errore
+
+**Scenario 1:** Hai usato BCDToolWindows e al prossimo avvio non parte nulla.
+- Premi `F8`, `F11`, `F12`, `DEL` o `ESC` durante il POST (dipende dalla scheda madre) per aprire il menu di avvio manuale del firmware
+- Cerca la voce "Windows Boot Manager" o "EFI\Microsoft\Boot\bootmgfw.efi"
+- Se la trovi: avvia → poi usa BCDToolWindows per correggere le voci
+
+**Scenario 2:** Il firmware non trova nessuna voce valida e mostra "No bootable device".
+- La ESP di Windows contiene ancora `\EFI\BOOT\BOOTx64.EFI` (copia del Windows Boot Manager)
+- Dalla shell EFI (se disponibile): `\EFI\Microsoft\Boot\bootmgfw.efi`
+- Oppure: avvia da USB Windows → Ripristino → Prompt dei comandi → `bcdedit /set {default} device partition=C:` (poi BCDToolWindows per sistemare le voci UEFI)
+
+**Scenario 3:** Hai un file di backup `.bcdtool`.
+- Avvia Windows con qualsiasi metodo
+- BCDToolWindows → Menu 7 → Ripristina → seleziona il backup
+
+### Bug risolti prima del rilascio
+
+Questi problemi sono stati identificati e corretti nel codice:
+
+| Bug | File | Fix applicato |
+|---|---|---|
+| `wcsicmp` non esiste in MSVC | `main.cpp` | Sostituito con `_wcsicmp` via `compat.h` |
+| `_getws_s` non esiste in MinGW | `main.cpp` | Sostituito con `ReadWideLine()` (usa `fgetws`) |
+| `swscanf_s` incompatibile con MinGW | `main.cpp` | Sostituito con `ScanWideTwo()` con ifdef |
+| `GetExistingBootNums` scansionava 65536 variabili | `uefi_vars.cpp` | Limitato a 512 slot con early-exit dopo 32 miss |
+| Divisione per zero se `BytesPerSector == 0` | `gpt_reader.cpp` | Aggiunto guard con fallback a 512 |
+
+---
+
+## 9. Requisiti, compilazione e utilizzo
+
+### Requisiti di sistema
+
+- Windows 10 / Windows 11 — **pienamente testato**
+- Windows 8 / 8.1 — probabilmente funziona (non testato)
+- Firmware **UEFI** (non Legacy BIOS — verificato automaticamente all'avvio)
+- Disco con tabella **GPT** (non MBR)
+- **Eseguire come Amministratore** (richiesto automaticamente via UAC)
+
+### Compilazione con Visual Studio
+
+```cmd
+git clone https://github.com/tuonome/BCDToolWindows.git
+cd BCDToolWindows
+cmake -B build -G "Visual Studio 17 2022" -A x64 .
+cmake --build build --config Release
+```
+
+Oppure semplicemente:
+```cmd
+build.bat
+```
+
+### Compilazione con MinGW-w64 (MSYS2)
+
+```bash
+# Dal terminale MSYS2 MinGW64:
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake
+```
+Poi dal prompt di Windows:
+```cmd
+build.bat
+```
+
+### Procedura dual boot (con BCDToolWindows)
+
+Vedi la sezione [0. Guida rapida: Linux Mint su secondo disco](#0-guida-rapida-linux-mint-su-secondo-disco) per la procedura completa e dettagliata.
+
+### Ripristino completo (rimozione Linux)
+
+**Con backup (modo sicuro):**
+1. Spegni il PC, rimuovi o tieni il disco Linux (non importa).
+2. Avvia Windows (il firmware salta automaticamente la voce Linux se il disco è assente).
+3. Esegui BCDToolWindows → **"7. Backup e ripristino" → "Ripristina da backup"**.
+4. Seleziona il backup creato prima di aggiungere Linux.
+5. Il firmware UEFI torna esattamente com'era prima.
+
+**Senza backup (rimozione manuale):**
+1. Menu **"4. Rimuovi voce"** → inserisci il numero Boot# della voce Linux.
+2. Conferma → la voce viene eliminata dalla NVRAM.
+3. Windows rimane come unica voce di avvio.
 
 ---
 
