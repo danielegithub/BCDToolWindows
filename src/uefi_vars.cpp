@@ -337,18 +337,50 @@ bool DeleteBootEntry(uint16_t bootNum)
 std::vector<uint16_t> GetExistingBootNums()
 {
     std::vector<uint16_t> result;
-    for (int i = 0; i <= 0xFFFF; ++i)
+
+    // Primary source: BootOrder. These slots exist by definition.
+    auto order = GetBootOrder();
+    for (uint16_t n : order)
+        result.push_back(n);
+
+    // Secondary scan: look for orphaned BootXXXX variables (not in BootOrder).
+    // We scan only 0x0000..0x01FF (512 slots) and stop early after 32 consecutive
+    // misses. Real firmware never assigns slot numbers above 0x01FF for OS boot
+    // entries; scanning all 65536 would be dangerous on some firmware because
+    // each GetFirmwareEnvironmentVariableW call crosses the kernel-to-firmware
+    // boundary and can be slow (10-100 ms each on some implementations).
+    int consecutiveMisses = 0;
+    for (int i = 0; i <= 0x01FF; ++i)
     {
+        uint16_t n = (uint16_t)i;
+
+        // Skip slots already collected from BootOrder
+        bool alreadyHave = false;
+        for (uint16_t r : result)
+            if (r == n) { alreadyHave = true; break; }
+        if (alreadyHave)
+        {
+            consecutiveMisses = 0;
+            continue;
+        }
+
         wchar_t varName[16];
         swprintf_s(varName, 16, L"Boot%04X", i);
 
-        // Zero-size probe
         DWORD r = GetFirmwareEnvironmentVariableW(varName, EFI_GLOBAL_GUID_STR,
             nullptr, 0);
         DWORD err = GetLastError();
 
         if (r > 0 || err == ERROR_INSUFFICIENT_BUFFER)
-            result.push_back((uint16_t)i);
+        {
+            result.push_back(n);
+            consecutiveMisses = 0;
+        }
+        else
+        {
+            if (++consecutiveMisses >= 32)
+                break;  // No more orphaned entries past this point
+        }
     }
     return result;
 }

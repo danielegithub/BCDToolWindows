@@ -17,6 +17,19 @@ set(SOURCES
     src/backup.cpp
 )
 
+# compat.h is header-only — listed here for IDE visibility
+set(HEADERS
+    src/efi_types.h
+    src/compat.h
+    src/privilege.h
+    src/gpt_reader.h
+    src/uefi_vars.h
+    src/esp_scanner.h
+    src/os_detector.h
+    src/boot_editor.h
+    src/backup.h
+)
+
 add_executable(BCDToolWindows WIN32 ${SOURCES})
 
 target_include_directories(BCDToolWindows PRIVATE src)

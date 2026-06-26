@@ -18,11 +18,11 @@
 #include <cstring>
 #include <cwctype>
 #include <fcntl.h>    // _O_U8TEXT
-#include <io.h>       // _setmode
-#include <conio.h>    // _getch
+#include <io.h>       // _setmode, _fileno
 #include <string>
 #include <vector>
 #include <algorithm>
+#include "compat.h"   // ReadWideLine, _wcsicmp, ScanWideTwo
 
 #include "privilege.h"
 #include "gpt_reader.h"
@@ -61,7 +61,8 @@ static void PrintSeparator()
 static void PressEnterToContinue()
 {
     wprintf(L"\n  Premi INVIO per continuare...");
-    _getch();
+    wchar_t dummy[4] = {};
+    ReadWideLine(dummy, 4);
     wprintf(L"\n");
 }
 
@@ -71,7 +72,7 @@ static int ReadInt(const wchar_t* prompt, int minVal, int maxVal)
     {
         wprintf(L"%s", prompt);
         wchar_t buf[32] = {};
-        _getws_s(buf, 32);
+        ReadWideLine(buf, 32);
         int val = _wtoi(buf);
         if (val >= minVal && val <= maxVal)
             return val;
@@ -84,7 +85,7 @@ static std::wstring ReadLine(const wchar_t* prompt)
 {
     wprintf(L"%s", prompt);
     wchar_t buf[256] = {};
-    _getws_s(buf, 256);
+    ReadWideLine(buf, 256);
     return buf;
 }
 
@@ -268,7 +269,7 @@ static void MenuAddEntry()
     // Allow customizing the name
     wprintf(L"\n  Nome voce [%s]: ", os.Name.c_str());
     wchar_t nameBuf[128] = {};
-    _getws_s(nameBuf, 128);
+    ReadWideLine(nameBuf, 128);
     DetectedOS osToAdd = os;
     if (wcslen(nameBuf) > 0)
         osToAdd.Name = nameBuf;
@@ -322,7 +323,7 @@ static void MenuRemoveEntry()
 
     wprintf(L"  Inserisci il numero Boot (es. 0001) o 0 per annullare: ");
     wchar_t buf[16] = {};
-    _getws_s(buf, 16);
+    ReadWideLine(buf, 16);
 
     if (wcscmp(buf, L"0") == 0)
         return;
@@ -344,7 +345,7 @@ static void MenuRemoveEntry()
 
     wprintf(L"  Sei sicuro di voler rimuovere Boot%04X? [s/N]: ");
     wchar_t confirm[8] = {};
-    _getws_s(confirm, 8);
+    ReadWideLine(confirm, 8);
     if (towlower(confirm[0]) != L's')
     {
         wprintf(L"  Annullato.\n");
@@ -389,13 +390,13 @@ static void MenuChangeOrder()
         wprintf(L"\n  > ");
 
         wchar_t buf[32] = {};
-        _getws_s(buf, 32);
+        ReadWideLine(buf, 32);
 
         if (towlower(buf[0]) == L'q')
             break;
 
         wchar_t cmd[16] = {}, hexStr[16] = {};
-        if (swscanf_s(buf, L"%15s %15s", cmd, 16, hexStr, 16) < 2)
+        if (ScanWideTwo(buf, cmd, 16, hexStr, 16) < 2)
         {
             wprintf(L"  [!] Sintassi non valida.\n");
             Sleep(1000);
@@ -406,9 +407,9 @@ static void MenuChangeOrder()
         uint16_t bootNum = (uint16_t)wcstoul(hexStr, &endPtr, 16);
 
         bool ok = false;
-        if (wcsicmp(cmd, L"su") == 0)
+        if (_wcsicmp(cmd, L"su") == 0)
             ok = MoveEntryUp(bootNum);
-        else if (wcsicmp(cmd, L"giu") == 0)
+        else if (_wcsicmp(cmd, L"giu") == 0)
             ok = MoveEntryDown(bootNum);
         else
         {
@@ -442,7 +443,7 @@ static void MenuAutoConfigure()
     wprintf(L"\n  Continuare? [s/N]: ");
 
     wchar_t confirm[8] = {};
-    _getws_s(confirm, 8);
+    ReadWideLine(confirm, 8);
     if (towlower(confirm[0]) != L's')
     {
         wprintf(L"  Annullato.\n");
@@ -482,7 +483,7 @@ static void MenuBackupRestore()
         wprintf(L"\n  Scelta: ");
 
         wchar_t buf[8] = {};
-        _getws_s(buf, 8);
+        ReadWideLine(buf, 8);
         int choice = _wtoi(buf);
 
         if (choice == 0)
@@ -560,7 +561,7 @@ static void MenuBackupRestore()
             wprintf(L"\n  ATTENZIONE: Il ripristino sovrascriverà TUTTE le voci di avvio UEFI\n");
             wprintf(L"  con quelle del backup. Continuare? [s/N]: ");
             wchar_t confirm[8] = {};
-            _getws_s(confirm, 8);
+            ReadWideLine(confirm, 8);
             if (towlower(confirm[0]) != L's')
             {
                 wprintf(L"  Annullato.\n");
@@ -630,7 +631,7 @@ static void MenuAdvanced()
         wprintf(L"\n  Scelta: ");
 
         wchar_t buf[8] = {};
-        _getws_s(buf, 8);
+        ReadWideLine(buf, 8);
         int choice = _wtoi(buf);
 
         if (choice == 0)
@@ -643,7 +644,7 @@ static void MenuAdvanced()
 
             wprintf(L"  Numero Boot# per il prossimo avvio (hex, es. 0002) o 0 per annullare: ");
             wchar_t hexBuf[16] = {};
-            _getws_s(hexBuf, 16);
+            ReadWideLine(hexBuf, 16);
             if (wcscmp(hexBuf, L"0") == 0)
                 continue;
 
@@ -664,7 +665,7 @@ static void MenuAdvanced()
 
             wprintf(L"  Numero Boot# da abilitare/disabilitare (hex): ");
             wchar_t hexBuf[16] = {};
-            _getws_s(hexBuf, 16);
+            ReadWideLine(hexBuf, 16);
 
             wchar_t* endPtr = nullptr;
             uint16_t bootNum = (uint16_t)wcstoul(hexBuf, &endPtr, 16);
@@ -742,7 +743,7 @@ static void MainMenu()
         wprintf(L"\n  Scelta: ");
 
         wchar_t buf[8] = {};
-        _getws_s(buf, 8);
+        ReadWideLine(buf, 8);
         int choice = _wtoi(buf);
 
         switch (choice)

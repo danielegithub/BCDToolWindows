@@ -97,8 +97,10 @@ static bool ReadDiskLayout(int diskIndex, DiskInfo& out)
         pi.StartingOffsetBytes    = (UINT64)p.StartingOffset.QuadPart;
         pi.PartitionLengthBytes   = (UINT64)p.PartitionLength.QuadPart;
         pi.BytesPerSector         = out.BytesPerSector;
-        pi.StartLBA               = pi.StartingOffsetBytes / out.BytesPerSector;
-        pi.SizeLBA                = pi.PartitionLengthBytes / out.BytesPerSector;
+        // Guard against division by zero if firmware reports 0 bytes/sector
+        UINT32 bps = (out.BytesPerSector > 0) ? out.BytesPerSector : 512;
+        pi.StartLBA               = pi.StartingOffsetBytes / bps;
+        pi.SizeLBA                = pi.PartitionLengthBytes / bps;
 
         // Copy GUIDs (GUID == EFI_GUID layout-compatible)
         static_assert(sizeof(EFI_GUID) == sizeof(GUID), "GUID size mismatch");
