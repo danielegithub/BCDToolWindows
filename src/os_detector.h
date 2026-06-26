@@ -7,7 +7,7 @@ struct DetectedOS {
     std::wstring  Name;          // e.g. "Ubuntu 22.04", "Windows 11", "Fedora"
     std::wstring  Vendor;        // e.g. "Canonical", "Microsoft", "Red Hat"
     std::wstring  BootloaderPath; // Relative path inside ESP, e.g. \EFI\ubuntu\grubx64.efi
-    std::wstring  ESPAccessPath;  // Full path prefix, e.g. S:\
+    std::wstring  ESPAccessPath;  // Full path prefix, e.g. S:
     PartitionInfo ESPPartition;
     int           Priority;      // Suggested priority (lower = higher priority; Windows=0)
 };

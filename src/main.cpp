@@ -10,8 +10,12 @@
  */
 
 #define WIN32_LEAN_AND_MEAN
+#ifndef UNICODE
 #define UNICODE
+#endif
+#ifndef _UNICODE
 #define _UNICODE
+#endif
 #include <windows.h>
 
 #include <cstdio>
@@ -774,6 +778,7 @@ int wmain(int argc, wchar_t* argv[])
     // Set UTF-8 / wide output
     SetConsoleOutputCP(CP_UTF8);
     _setmode(_fileno(stdout), _O_U8TEXT);
+    setvbuf(stdout, nullptr, _IONBF, 0);  // unbuffered — prompts appear immediately
 
     // Elevate to Administrator if not already
     EnsureAdminOrElevate(argc, argv);

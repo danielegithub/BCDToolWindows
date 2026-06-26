@@ -41,7 +41,7 @@ static const KnownBootloader KNOWN_BOOTLOADERS[] = {
 
     // openSUSE / SUSE
     { L"\\efi\\opensuse\\grubx64.efi",         L"openSUSE",              L"SUSE",       20 },
-    { L"\\efi\\opensuse\\shimx64.efi",         L"openSUSE (Secure Boot)","SUSE",        20 },
+    { L"\\efi\\opensuse\\shimx64.efi",         L"openSUSE (Secure Boot)",L"SUSE",       20 },
     { L"\\efi\\sles\\grubx64.efi",             L"SUSE Linux Enterprise", L"SUSE",       20 },
 
     // Arch Linux

@@ -11,7 +11,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 struct VolumeInfo {
-    std::wstring VolumePath;    // \\?\Volume{...}\
+    std::wstring VolumePath;    // \\?\Volume{GUID}
     std::wstring DriveLetter;   // "C:\\" or empty
     int          DiskNumber;
     UINT64       StartingOffset;
